@@ -22,11 +22,14 @@ func (m Map) Keys() []string {
 	return keys
 }
 
-func ExtractAll(URL string) ([]byte, []string) {
+func ExtractAll(URL string) ([]byte, []string, bool) {
+	if !isHTML(URL) {
+		return nil, nil, false
+	}
 	resp, err := http.Get(URL)
 	if err != nil {
 		log.Println(err)
-		return nil, nil
+		return nil, nil, false
 	}
 	defer resp.Body.Close()
 	U, _ := url.Parse(URL)
@@ -38,13 +41,25 @@ func ExtractAll(URL string) ([]byte, []string) {
 	urls := make(Map)
 	for {
 		if next := tokenizer.Next(); next == html.ErrorToken {
-			return contentWriter.Bytes(), urls.Keys()
+			return contentWriter.Bytes(), urls.Keys(), true
 		} else if next != html.StartTagToken {
 			continue
 		} else if token := tokenizer.Token(); token.Data != "a" {
 			continue
 		} else {
-			if target, err := extractURL(domain, scheme, token.Attr[0].Val); err == nil {
+			var href string
+			var ok bool
+			for _, attr := range token.Attr {
+				if attr.Key == "href" {
+					href = attr.Val
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				continue
+			}
+			if target, err := extractURL(domain, scheme, href); err == nil {
 				urls[target] = true
 			} else {
 				log.Println(err)
@@ -83,7 +98,7 @@ func extractURL(domain, scheme, href string) (string, error) {
 	}
 }
 
-func test(url string) bool {
+func isHTML(url string) bool {
 	resp, err := http.Head(url)
 	if err != nil {
 		log.Println(err)
